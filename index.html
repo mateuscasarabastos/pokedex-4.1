@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokédex Ultra Pro</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --pokedex-red: #cc0000;
+            --pokedex-blue: #3295d6;
+            --pokedex-dark: #212121;
+        }
+
+        body {
+            font-family: 'Flexo-Regular', arial, sans-serif;
+            background: #4d4d4d;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            color: #313131;
+        }
+
+        .pokedex-container {
+            background-color: var(--pokedex-red);
+            width: 100%;
+            max-width: 600px;
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            border: 8px solid #a00000;
+        }
+
+        .search-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border-radius: 30px;
+            border: none;
+            font-size: 16px;
+        }
+
+        button.search-btn {
+            padding: 10px 25px;
+            border-radius: 30px;
+            border: none;
+            background: var(--pokedex-blue);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .main-screen {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            min-height: 500px;
+        }
+
+        .pokemon-header {
+            text-align: center;
+        }
+
+        .img-container {
+            background: #f2f2f2;
+            border-radius: 10px;
+            margin: 10px 0;
+            position: relative;
+        }
+
+        .pokemon-img {
+            width: 200px;
+            height: 200px;
+            transition: transform 0.3s;
+        }
+
+        .shiny-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ffcc00;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .types-container {
+            margin: 10px 0;
+        }
+
+        .badge {
+            padding: 5px 15px;
+            border-radius: 5px;
+            color: white;
+            text-transform: uppercase;
+            font-size: 12px;
+            margin: 0 5px;
+            font-weight: bold;
+        }
+
+        /* Cores de Tipos */
+        .fire { background: #F08030; } .water { background: #6890F0; }
+        .grass { background: #78C850; } .electric { background: #F8D030; }
+        .ice { background: #98D8D8; } .fighting { background: #C03028; }
+        .poison { background: #A040A0; } .ground { background: #E0C068; }
+        .flying { background: #A890F0; } .psychic { background: #F85888; }
+        .bug { background: #A8B820; } .rock { background: #B8A038; }
+        .ghost { background: #705898; } .dragon { background: #7038F8; }
+        .dark { background: #705848; } .steel { background: #B8B8D0; }
+        .fairy { background: #EE99AC; } .normal { background: #A8A878; }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .section-title {
+            border-bottom: 2px solid #eee;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #777;
+        }
+
+        .abilities-list {
+            list-style: none;
+            padding: 0;
+            font-size: 14px;
+        }
+
+        .chart-container {
+            margin-top: 20px;
+            height: 250px;
+        }
+
+        .relations {
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .relations b { color: #cc0000; }
+    </style>
+</head>
+<body>
+
+<div class="pokedex-container">
+    <div class="search-section">
+        <input type="text" id="pokeInput" placeholder="Nome ou ID...">
+        <button class="search-btn" onclick="fetchPokemon()">BUSCAR</button>
+    </div>
+
+    <div id="screen" class="main-screen">
+        <p style="text-align: center; color: #999; margin-top: 100px;">Aguardando comando...</p>
+    </div>
+</div>
+
+<script>
+    let currentPokemon = null;
+    let isShiny = false;
+    let myChart = null;
+
+    async function fetchPokemon() {
+        const name = document.getElementById('pokeInput').value.toLowerCase();
+        if(!name) return;
+
+        try {
+            const res = await fetch(`https://pokeapi.co/api/v2/pokemon/${name}`);
+            if(!res.ok) throw new Error("Não encontrado");
+            currentPokemon = await res.json();
+            
+            // Busca dados dos tipos para resistências
+            const typePromises = currentPokemon.types.map(t => fetch(t.type.url).then(r => r.json()));
+            const typeDetails = await Promise.all(typePromises);
+
+            renderPokemon(typeDetails);
+        } catch (err) {
+            document.getElementById('screen').innerHTML = `<p style="color:red; text-align:center">Erro: Pokémon não encontrado!</p>`;
+        }
+    }
+
+    function toggleShiny() {
+        isShiny = !isShiny;
+        const img = document.getElementById('pokeImg');
+        img.src = isShiny ? currentPokemon.sprites.other['official-artwork'].front_shiny : currentPokemon.sprites.other['official-artwork'].front_default;
+        document.getElementById('shinyBtn').innerText = isShiny ? "Ver Normal" : "Ver Shiny";
+    }
+
+    function renderPokemon(typeDetails) {
+        isShiny = false;
+        const screen = document.getElementById('screen');
+        
+        // Processar Resistências
+        let weak = new Set(), resist = new Set(), immune = new Set();
+        typeDetails.forEach(td => {
+            td.damage_relations.double_damage_from.forEach(t => weak.add(t.name));
+            td.damage_relations.half_damage_from.forEach(t => resist.add(t.name));
+            td.damage_relations.no_damage_from.forEach(t => immune.add(t.name));
+        });
+
+        screen.innerHTML = `
+            <div class="pokemon-header">
+                <small>Nº ${currentPokemon.id}</small>
+                <h2 style="text-transform: capitalize; margin: 0;">${currentPokemon.name}</h2>
+                <div class="img-container">
+                    <button class="shiny-btn" id="shinyBtn" onclick="toggleShiny()">Ver Shiny</button>
+                    <img id="pokeImg" class="pokemon-img" src="${currentPokemon.sprites.other['official-artwork'].front_default}">
+                </div>
+                <div class="types-container">
+                    ${currentPokemon.types.map(t => `<span class="badge ${t.type.name}">${t.type.name}</span>`).join('')}
+                </div>
+            </div>
+
+            <div class="info-grid">
+                <div>
+                    <div class="section-title">HABILIDADES</div>
+                    <ul class="abilities-list">
+                        ${currentPokemon.abilities.map(a => `<li>• ${a.ability.name.replace('-', ' ')} ${a.is_hidden ? '<b>(Hidden)</b>' : ''}</li>`).join('')}
+                    </ul>
+                </div>
+                <div class="relations">
+                    <div class="section-title">DEFESAS</div>
+                    <b>Fraquezas:</b> ${Array.from(weak).slice(0, 5).join(', ')}...<br>
+                    <b>Resistências:</b> ${Array.from(resist).slice(0, 5).join(', ') || 'Nenhuma'}<br>
+                    <b>Imunidade:</b> ${Array.from(immune).join(', ') || 'Nenhuma'}
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <canvas id="statsChart"></canvas>
+            </div>
+        `;
+
+        createChart();
+    }
+
+    function createChart() {
+        const ctx = document.getElementById('statsChart').getContext('2d');
+        const stats = currentPokemon.stats.map(s => s.base_stat);
+        const labels = currentPokemon.stats.map(s => s.stat.name.toUpperCase());
+
+        if(myChart) myChart.destroy();
+
+        myChart = new Chart(ctx, {
+            type: 'radar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Status Base',
+                    data: stats,
+                    backgroundColor: 'rgba(50, 149, 214, 0.2)',
+                    borderColor: 'rgba(50, 149, 214, 1)',
+                    borderWidth: 2,
+                    pointBackgroundColor: 'rgb(255, 99, 132)',
+                }]
+            },
+            options: {
+                scales: {
+                    r: {
+                        angleLines: { display: true },
+                        suggestedMin: 0,
+                        suggestedMax: 150
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
+    // Enter para buscar
+    document.getElementById('pokeInput').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') fetchPokemon();
+    });
+</script>
+
+</body>
+</html>
